@@ -1,0 +1,11 @@
+name = "daco-mcp"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Deploy: npx wrangler deploy
+# URL: https://daco-mcp.contactjccoaching.workers.dev
+
+# Secrets (set with: npx wrangler secret put SECRET_NAME)
+# BRAVE_API_KEY     — Brave Search API key
+# RAPIDAPI_KEY      — RapidAPI key (FitLexicon, NutriLexicon, QuoteLex)
