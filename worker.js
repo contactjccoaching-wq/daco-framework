@@ -7,7 +7,6 @@
  * - PubMed (scientific literature)
  * - Brave Search (web search)
  * - FitLexicon (exercise database)
- * - NutriLexicon (nutrition data)
  *
  * The LLM poses questions, DACO executes the right tools.
  */
