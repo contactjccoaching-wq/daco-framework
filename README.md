@@ -1,88 +1,129 @@
-# DACO MCP — Declarative Agent & MCP Orchestration
+# DACO — Declarative Agent & MCP Orchestration
 
-A Cloudflare Worker that implements the MCP protocol over HTTP, orchestrating multiple backends through a single endpoint.
+**One MCP endpoint to rule them all.**
 
-## The concept
+> Instead of configuring N separate MCP servers in Claude Desktop, you configure one: DACO. It routes tool calls to the right backend, executes them in parallel when possible, and returns structured results.
 
-Instead of configuring 5 MCPs in your Claude Desktop, you configure one: DACO.
-DACO routes tool calls to the right backend, and adds parallel execution (`daco_execute_parallel`) for the PRISM pattern applied to tools.
+The pattern is backend-agnostic. You define backends as simple modules (name prefix → handler function). DACO handles routing, parallel execution, error recovery, and the full MCP protocol over HTTP.
 
 The LLM poses questions. DACO executes.
 
-## Backends included
+---
 
-| Backend | Tools | Key use case |
-|---------|-------|---|
-| Smart Rabbit | `smart_rabbit_generate_program` | Personalized fitness programs |
-| PubMed | `pubmed_search` | Scientific literature |
-| Brave Search | `brave_search` | Real-time web search |
-| FitLexicon | `fitlexicon_search_exercises`, `fitlexicon_get_exercise` | Exercise database |
+## How It Works
+
+```
+Claude Desktop / Any MCP Client
+        |
+        | (single MCP connection)
+        v
+   +---------+
+   |  DACO   |  Cloudflare Worker
+   |  Router |  MCP Streamable HTTP
+   +----+----+
+        |
+   +----+----+----+----+
+   |    |    |    |    |
+   v    v    v    v    v
+ Backend A  B  C  D  ...
+```
+
+Each backend is a JS module exporting:
+- `TOOLS` — array of MCP tool definitions
+- `callBackend(name, args, env)` — handler function
+
+DACO merges all tool lists, dispatches by name prefix, and adds meta-tools on top (`daco_execute_parallel`, `daco_list_backends`).
+
+## Current Backends (reference implementation)
+
+This repo ships with 4 backends as a working example:
+
+| Backend | Prefix | What it does |
+|---------|--------|---|
+| Smart Rabbit | `smart_rabbit_*` | AI fitness program generation |
+| PubMed | `pubmed_*` | Scientific literature search (NCBI) |
+| Brave Search | `brave_*` | Real-time web search |
+| FitLexicon | `fitlexicon_*` | Exercise database (873 exercises, 8 languages) |
+
+**To adapt DACO to your own use case**, replace these with your own backends. The orchestration layer doesn't care what the backends do.
 
 ## Deploy
 
 ```bash
-cd DACO-MCP
 npm install
-npx wrangler secret put BRAVE_API_KEY      # Brave Search API key
-npx wrangler secret put RAPIDAPI_KEY       # RapidAPI key
+npx wrangler secret put BRAVE_API_KEY
+npx wrangler secret put RAPIDAPI_KEY
 npx wrangler deploy
 ```
 
 ## Configure in Claude Desktop
 
-Once deployed, add to `%APPDATA%\Claude\claude_desktop_config.json`:
-
 ```json
 {
   "mcpServers": {
     "daco": {
-      "url": "https://daco-mcp.contactjccoaching.workers.dev/mcp",
+      "url": "https://your-worker.workers.dev/mcp",
       "transport": "http"
     }
   }
 }
 ```
 
-Or use the npx local proxy:
+Or via local proxy:
 
 ```json
 {
   "mcpServers": {
     "daco": {
       "command": "npx",
-      "args": ["mcp-remote", "https://daco-mcp.contactjccoaching.workers.dev/mcp"]
+      "args": ["mcp-remote", "https://your-worker.workers.dev/mcp"]
     }
   }
 }
 ```
 
-## Extending
+## Adding a Backend
 
-To add a new backend:
+1. Create `backends/my-service.js`:
 
-1. Create `backends/my-service.js` with `MY_SERVICE_TOOLS` and `callMyService(name, args, env)`
-2. Import both in `worker.js`
-3. Add tools to `ALL_TOOLS`
-4. Add routing in `dispatchTool()`
+```javascript
+export const MY_SERVICE_TOOLS = [{
+    name: 'myservice_do_thing',
+    description: 'Does the thing',
+    inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }
+}];
 
-The pattern is intentionally simple.
+export async function callMyService(name, args, env) {
+    const res = await fetch('https://api.example.com/...', { ... });
+    return JSON.stringify(await res.json());
+}
+```
 
-## PRISM + DACO
+2. Import in `worker.js`, add to `ALL_TOOLS`, add prefix routing in `dispatchTool()`
 
-`daco_execute_parallel` lets Claude fire multiple tool calls simultaneously:
+That's it. No config files, no plugin system. Just functions.
+
+## Parallel Execution
+
+`daco_execute_parallel` fires multiple tool calls simultaneously:
 
 ```
-User: "Find studies on hypertrophy AND generate my program AND search for current gym prices"
-        ↓
 daco_execute_parallel([
   { tool: "pubmed_search", arguments: { query: "hypertrophy" } },
-  { tool: "smart_rabbit_generate_program", arguments: { ... } },
-  { tool: "brave_search", arguments: { query: "gym membership prices 2026" } }
+  { tool: "brave_search", arguments: { query: "gym prices 2026" } },
+  { tool: "myservice_do_thing", arguments: { query: "..." } }
 ])
-        ↓
-All 3 results returned simultaneously
+→ All results returned in a single response
 ```
+
+## Related Projects
+
+| Project | Role |
+|---------|------|
+| **[PRISM Framework](https://github.com/contactjccoaching-wq/prism-framework)** | N-parallel sampling + meritocratic synthesis — *what to ask* |
+| **[Spinal Loop](https://github.com/contactjccoaching-wq/spinal-loop)** | Bio-inspired model routing — *who to ask* |
+| **DACO** *(this repo)* | MCP tool orchestration — *what to do with it* |
 
 ---
 
-Part of the [PRISM Framework](https://github.com/contactjccoaching-wq/prism-framework) by Jacques Chauvin.
+MIT License — by [Jacques Chauvin](https://github.com/contactjccoaching-wq)
