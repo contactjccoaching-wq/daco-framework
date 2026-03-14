@@ -5,6 +5,8 @@
 
 **One MCP endpoint to rule them all.**
 
+![DACO Framework](daco-framework.png)
+
 > Instead of configuring N separate MCP servers in Claude Desktop, you configure one: DACO. It routes tool calls to the right backend, executes them in parallel when possible, and returns structured results.
 
 The pattern is backend-agnostic. You define backends as simple modules (name prefix → handler function). DACO handles routing, parallel execution, error recovery, and the full MCP protocol over HTTP.
